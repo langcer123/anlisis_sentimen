@@ -6,24 +6,29 @@ import seaborn as sns
 import re
 import numpy as np
 import nltk
-from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from wordcloud import WordCloud
-from sklearn.metrics import accuracy_score, classification_report, precision_score, recall_score, f1_score
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.feature_extraction.text import TfidfVectorizer # Import TfidfVectorizer
+from Sastrawi.Stemmer.StemmerFactory import StemmerFactory # Import StemmerFactory
+from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFactory # Import StopWordRemoverFactory
 
 # Set page config harus menjadi perintah Streamlit pertama
 st.set_page_config(layout="wide")
 
-# Pastikan NLTK stopwords dan punkt_tab diunduh
-# Menggunakan LookupError karena nltk.data.find akan memunculkan ini jika resource tidak ditemukan
-try:
-    nltk.data.find('corpora/stopwords')
-except LookupError:
-    nltk.download('stopwords')
+# Pastikan NLTK punkt_tab diunduh (stopwords tidak lagi dari NLTK)
 try:
     nltk.data.find('tokenizers/punkt_tab')
 except LookupError:
     nltk.download('punkt_tab')
+
+# Inisialisasi stemmer di luar fungsi agar hanya dibuat sekali
+stemmer_factory = StemmerFactory()
+stemmer = stemmer_factory.create_stemmer()
+
+# Inisialisasi StopWordRemover di luar fungsi agar hanya dibuat sekali
+stopword_factory = StopWordRemoverFactory()
+list_stopwords = set(stopword_factory.get_stop_words())
 
 # --- Fungsi Preprocessing (dari notebook Preprocessing.ipynb) ---
 def clean_youtube_text(text):
@@ -40,8 +45,6 @@ def clean_youtube_text(text):
     return text.lower() # Mengubah ke huruf kecil
 
 # --- Fungsi Normalisasi (dari notebook Preprocessing.ipynb) ---
-# Membuat dictionary dari kamus normalisasi
-# Anda perlu memastikan file 'kamus_normalisasi_lengkap.xlsx' ada di direktori yang sama
 kamus_normalisasi = {}
 try:
     kamus = pd.read_excel('kamus_normalisasi_lengkap.xlsx')
@@ -59,9 +62,7 @@ def normalisasi_text(text, kamus_normalisasi):
     normalisasi_kata_kata = [kamus_normalisasi.get(kata, kata) for kata in kata_kata]
     return ' '.join(normalisasi_kata_kata)
 
-# --- Fungsi Stopword Removal (dari notebook Preprocessing.ipynb) ---
-list_stopwords = set(stopwords.words('indonesian')) # Menggunakan stopwords Bahasa Indonesia
-
+# --- Fungsi Stopword Removal (dari notebook Preprocessing.ipynb, disesuaikan) ---
 def stopword_removal(words):
     """
     Menghapus stopword dari daftar kata.
@@ -74,6 +75,26 @@ def tokenize_text(text):
     Melakukan tokenisasi teks menjadi daftar kata.
     """
     return word_tokenize(text)
+
+# --- Fungsi Stemming (dari notebook Preprocessing.ipynb) ---
+def apply_stemming(tokens):
+    """
+    Menerapkan stemming pada daftar token.
+    """
+    return [stemmer.stem(word) for word in tokens]
+
+# --- Fungsi Preprocessing Lengkap (untuk konsistensi) ---
+def full_preprocessing(text, kamus_normalisasi, list_stopwords, stemmer):
+    """
+    Menerapkan seluruh alur preprocessing: cleaning, normalisasi, tokenisasi,
+    stopword removal, dan stemming.
+    """
+    cleaned_text = clean_youtube_text(text)
+    normalized_text = normalisasi_text(cleaned_text, kamus_normalisasi)
+    tokenized_text = tokenize_text(normalized_text)
+    filtered_text = stopword_removal(tokenized_text)
+    stemmed_text_tokens = apply_stemming(filtered_text) # APPLY STEMMING HERE
+    return ' '.join(stemmed_text_tokens)
 
 # --- Load Model dan Vectorizer ---
 @st.cache_resource # Cache the model and vectorizer to avoid reloading on every rerun
@@ -111,8 +132,7 @@ def load_model_and_vectorizer():
         y_train_smote = data_loaded_for_splits.get('y_train_smote')
         X_test = data_loaded_for_splits.get('X_test')
         y_test = data_loaded_for_splits.get('y_test')
-        
-        # Pastikan data split tidak kosong
+
         if X_train_smote is None or y_train_smote is None or X_test is None or y_test is None:
             st.warning("File 'penyesuaian_data.pkl' tidak berisi semua komponen split data yang diharapkan (X_train_smote, y_train_smote, X_test, y_test). Dashboard mungkin menampilkan informasi terbatas.")
 
@@ -131,15 +151,11 @@ def predict_sentiment(text):
         st.warning("Model atau vektorizer belum dimuat. Tidak dapat melakukan prediksi.")
         return "Error: Model not loaded"
 
-    # Preprocessing teks input
-    cleaned_text = clean_youtube_text(text)
-    normalized_text = normalisasi_text(cleaned_text, kamus_normalisasi)
-    tokenized_text = tokenize_text(normalized_text)
-    filtered_text = stopword_removal(tokenized_text)
-    processed_text = ' '.join(filtered_text)
+    # Preprocessing teks input menggunakan full_preprocessing
+    # Ini akan memastikan konsistensi dengan cara TF-IDF dilatih (setelah stemming)
+    processed_text = full_preprocessing(text, kamus_normalisasi, list_stopwords, stemmer)
 
     # Transformasi teks menggunakan TF-IDF Vectorizer yang sudah dilatih
-    # Pastikan processed_text adalah list dengan satu elemen
     text_vectorized = tfidf_vectorizer.transform([processed_text])
 
     # Prediksi sentimen
@@ -151,58 +167,50 @@ def predict_sentiment(text):
 # --- Streamlit UI ---
 st.title("ANALISIS SENTIMEN PENGGUNA YOUTUBE TERHADAP DAMPAK ARTIFICIAL INTELLIGENCE MENGGUNAKAN ALGORITMA NAIVE BAYES")
 
-# Inisialisasi session_state untuk menu_selection jika belum ada
 if 'menu_selection' not in st.session_state:
     st.session_state.menu_selection = "Dashboard"
 
-# Custom CSS for "text buttons" in sidebar
-import streamlit as st
-
-# Custom CSS untuk tombol sidebar ala menu navigasi
 st.markdown("""
 <style>
-/* Target tombol di sidebar */
-section[data-testid="stSidebar"] .stButton button {
-    background-color: transparent;
-    color: #333;
-    border: none !important;
-    padding: 0.5rem 1rem !important;
-    border-radius: 0.25rem !important;
-    width: 100%;
-    text-align: left !important;
-    margin: 0 !important;
-    display: flex;
-    align-items: center;
-    justify-content: flex-start !important;
-    box-shadow: none !important;
-} 
-section[data-testid="stSidebar"] .stButton button:hover {
-    background-color: #e6e6e6 !important;
-    color: black !important;
-}
+    .stSidebar .stButton > button {
+        background-color: transparent !important;
+        color: #007bff !important;
+        border: none !important;
+        padding: 0.5rem 1rem !important;
+        border-radius: 0.25rem !important;
+        width: 100%;
+        text-align: left !important;
+        margin-bottom: 0.5rem;
+        justify-content: flex-start !important;
+    }
+
+    .stSidebar .stButton > button:hover {
+        background-color: rgba(0, 123, 255, 0.1) !important;
+        color: #0056b3 !important;
+    }
+
+    .stSidebar .stButton > button:active {
+        background-color: rgba(0, 123, 255, 0.2) !important;
+        color: #004085 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# Sidebar untuk navigasi
 st.sidebar.title("Navigasi")
 
-# Tombol navigasi
 if st.sidebar.button("Dashboard", key="nav_dashboard"):
     st.session_state.menu_selection = "Dashboard"
 if st.sidebar.button("Prediksi Sentimen", key="nav_predict"):
     st.session_state.menu_selection = "Prediksi Sentimen"
 
-# Separator
 st.sidebar.markdown("---")
 
-# Ambil pilihan menu dari session_state
 menu_selection = st.session_state.menu_selection
 
 if menu_selection == "Dashboard":
     st.header("Dashboard Analisis Sentimen")
 
     if tfidf_vectorizer is not None and best_model is not None and label_encoder is not None:
-        # Ringkasan Data
         st.subheader("Ringkasan Data Komentar")
         try:
             df_labelled = pd.read_excel('data_labelled.xlsx')
@@ -216,11 +224,10 @@ if menu_selection == "Dashboard":
             for sentiment, count in sentiment_counts.items():
                 st.write(f"- **{sentiment.capitalize()}**: {count} ({sentiment_percentages[sentiment]:.2f}%)")
 
-            # Visualisasi Distribusi Sentimen
             st.subheader("Visualisasi Distribusi Sentimen")
             sentiment_counts_df = sentiment_counts.reset_index()
             sentiment_counts_df.columns = ['Sentimen', 'Jumlah']
-            
+
             fig_dist, ax_dist = plt.subplots(figsize=(8, 4))
             sns.barplot(x='Sentimen', y='Jumlah', data=sentiment_counts_df, ax=ax_dist, palette='viridis')
             ax_dist.set_title('Distribusi Sentimen Komentar')
@@ -233,7 +240,6 @@ if menu_selection == "Dashboard":
         except Exception as e:
             st.error(f"Terjadi kesalahan saat memuat atau memproses data untuk ringkasan: {e}")
 
-        # Informasi Pembagian Data
         st.subheader("Informasi Pembagian Data (Train-Test Split)")
         if X_train_smote is not None and X_test is not None:
             st.write(f"Ukuran Data Pelatihan (setelah SMOTE): **{X_train_smote.shape[0]}** sampel")
@@ -241,20 +247,16 @@ if menu_selection == "Dashboard":
         else:
             st.warning("Informasi pembagian data tidak tersedia. Pastikan 'penyesuaian_data.pkl' dimuat dengan benar dan berisi data split.")
 
-        # Performa Model
         st.subheader("Performa Model Terbaik")
         if best_model is not None and X_test is not None and y_test is not None and label_encoder is not None:
             try:
-                # Transform y_test ke format numerik yang sama dengan y_pred
                 y_test_encoded = label_encoder.transform(y_test)
                 y_pred = best_model.predict(X_test)
-                
+
                 accuracy = accuracy_score(y_test_encoded, y_pred)
-                
-                # Mendapatkan laporan klasifikasi
+
                 report = classification_report(y_test_encoded, y_pred, target_names=label_encoder.classes_, output_dict=True)
-                
-                # Ekstrak metrik makro rata-rata
+
                 macro_precision = report['macro avg']['precision']
                 macro_recall = report['macro avg']['recall']
                 macro_f1 = report['macro avg']['f1-score']
@@ -263,7 +265,7 @@ if menu_selection == "Dashboard":
                 st.write(f"Precision (Macro Avg): **{macro_precision:.4f}**")
                 st.write(f"Recall (Macro Avg): **{macro_recall:.4f}**")
                 st.write(f"F1-Score (Macro Avg): **{macro_f1:.4f}**")
-                
+
                 st.write("Laporan Klasifikasi Lengkap:")
                 report_df = pd.DataFrame(report).transpose().round(2)
                 st.dataframe(report_df)
@@ -272,41 +274,49 @@ if menu_selection == "Dashboard":
         else:
             st.warning("Performa model tidak dapat dihitung. Pastikan model dan data pengujian dimuat dengan benar dari file .pkl.")
 
-        # Alur Preprocessing
         st.subheader("Alur Preprocessing Data")
         st.markdown("""
-        Data komentar melalui beberapa tahapan preprocessing untuk memastikan kualitas dan relevansi data sebelum digunakan dalam pelatihan model:
+        Data komentar melalui beberapa tahapan preprocessing untuk memastikan kualitas dan relevansi data sebelum digunakan:
         1.  **Pembersihan Teks**: Menghapus karakter khusus, tautan (URL), hashtag, dan mention, serta mengubah teks menjadi huruf kecil.
         2.  **Normalisasi Teks**: Mengubah kata-kata tidak baku (slang) menjadi bentuk formal menggunakan kamus normalisasi.
         3.  **Tokenisasi**: Memecah teks menjadi unit-unit kata (token).
         4.  **Stopword Removal**: Menghapus kata-kata umum yang tidak memiliki makna signifikan (stopword) dalam Bahasa Indonesia.
-        5.  **Stemming**: proses reduksi kata-kata turunan menjadi bentuk dasarnya (stem atau akar kata) dalam pemrosesan bahasa alami (NLP).
+        5.  **Stemming**: Mengubah kata-kata berimbuhan menjadi kata dasar. (Tahap ini diterapkan untuk TF-IDF dan WordCloud agar konsisten dengan pelatihan model yang diasumsikan menggunakan stemming).
         """)
 
         # Top 10 Kata Berdasarkan Total Skor TF-IDF
         st.subheader("Top 10 Kata Berdasarkan Total Skor TF-IDF")
         try:
             df_labelled = pd.read_excel('data_labelled.xlsx')
-            # Filter hanya sentimen yang digunakan untuk pelatihan TF-IDF jika ada
-            # Asumsi TF-IDF dilatih pada sentimen 'positif' dan 'negatif'
-            df_model_filtered = df_labelled[df_labelled['sentiment'].isin(label_encoder.classes_)].copy()
-            df_model_filtered['processed_comments'] = df_model_filtered['Comments'].apply(lambda x: ' '.join(stopword_removal(tokenize_text(normalisasi_text(clean_youtube_text(x), kamus_normalisasi)))))
+            # Preprocess comments for TF-IDF visualization using full_preprocessing
+            # Ini akan memastikan konsistensi dengan cara TF-IDF dilatih (setelah stemming)
+            df_labelled['processed_comments_for_tfidf'] = df_labelled['Comments'].apply(
+                lambda x: full_preprocessing(x, kamus_normalisasi, list_stopwords, stemmer)
+            )
 
+            if not df_labelled.empty and tfidf_vectorizer is not None:
+                # Filter hanya sentimen yang digunakan untuk pelatihan TF-IDF jika ada
+                # Asumsi TF-IDF dilatih pada sentimen 'positif' dan 'negatif'
+                df_model_filtered = df_labelled[df_labelled['sentiment'].isin(label_encoder.classes_)].copy()
 
-            if not df_model_filtered.empty and tfidf_vectorizer is not None:
-                X_for_tfidf_viz = df_model_filtered['processed_comments']
-                X_tfidf_viz = tfidf_vectorizer.transform(X_for_tfidf_viz)
+                if not df_model_filtered.empty:
+                    X_for_tfidf_viz = df_model_filtered['processed_comments_for_tfidf']
+                    X_tfidf_viz = tfidf_vectorizer.transform(X_for_tfidf_viz)
 
-                feature_names = tfidf_vectorizer.get_feature_names_out()
-                tfidf_scores = X_tfidf_viz.sum(axis=0).A1
+                    feature_names = tfidf_vectorizer.get_feature_names_out()
+                    tfidf_scores = X_tfidf_viz.sum(axis=0).A1
 
-                tfidf_df = pd.DataFrame({
-                    'Kata Teratas': feature_names,
-                    'Total_TFIDF': tfidf_scores
-                })
+                    tfidf_df = pd.DataFrame({
+                        'Kata Teratas': feature_names,
+                        'Total_TFIDF': tfidf_scores
+                    })
 
-                top_10_tfidf = tfidf_df.sort_values(by='Total_TFIDF', ascending=False).head(10).reset_index(drop=True)
-                st.dataframe(top_10_tfidf)
+                    top_10_tfidf = tfidf_df.sort_values(by='Total_TFIDF', ascending=False).head(10).reset_index(drop=True)
+
+                    st.dataframe(top_10_tfidf.style.format({'Total_TFIDF': '{:.14f}'}))
+
+                else:
+                    st.warning("Tidak cukup data berlabel 'positif' atau 'negatif' untuk visualisasi TF-IDF.")
             else:
                 st.warning("Tidak cukup data berlabel atau TF-IDF Vectorizer tidak dimuat untuk visualisasi TF-IDF.")
         except FileNotFoundError:
@@ -319,12 +329,14 @@ if menu_selection == "Dashboard":
         st.subheader("WordCloud Sentimen")
         try:
             df_labelled = pd.read_excel('data_labelled.xlsx')
-            # Preprocess comments for WordCloud
-            df_labelled['processed_comments'] = df_labelled['Comments'].apply(lambda x: ' '.join(stopword_removal(tokenize_text(normalisasi_text(clean_youtube_text(x), kamus_normalisasi)))))
+            # Preprocess comments for WordCloud (menggunakan full_preprocessing untuk konsistensi)
+            df_labelled['processed_comments_for_wordcloud'] = df_labelled['Comments'].apply(
+                lambda x: full_preprocessing(x, kamus_normalisasi, list_stopwords, stemmer)
+            )
 
-            text_positif = ' '.join(df_labelled[df_labelled['sentiment'] == 'positif']['processed_comments'].astype(str))
-            text_negatif = ' '.join(df_labelled[df_labelled['sentiment'] == 'negatif']['processed_comments'].astype(str))
-            text_netral = ' '.join(df_labelled[df_labelled['sentiment'] == 'netral']['processed_comments'].astype(str))
+            text_positif = ' '.join(df_labelled[df_labelled['sentiment'] == 'positif']['processed_comments_for_wordcloud'].astype(str))
+            text_negatif = ' '.join(df_labelled[df_labelled['sentiment'] == 'negatif']['processed_comments_for_wordcloud'].astype(str))
+            text_netral = ' '.join(df_labelled[df_labelled['sentiment'] == 'netral']['processed_comments_for_wordcloud'].astype(str))
 
             col1, col2, col3 = st.columns(3)
 
@@ -370,7 +382,7 @@ if menu_selection == "Dashboard":
 
 elif menu_selection == "Prediksi Sentimen":
     st.header("Prediksi Sentimen")
-    st.write("Masukkan komentar YouTube untuk memprediksi sentimen anda (positif dan negatif).")
+    st.write("Masukkan komentar YouTube untuk memprediksi sentimennya (positif, negatif, atau netral).")
     user_input = st.text_area("Komentar Anda", "")
     if st.button("Prediksi"):
         if user_input:
