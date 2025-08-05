@@ -174,7 +174,7 @@ st.markdown("""
 <style>
     .stSidebar .stButton > button {
         background-color: transparent !important;
-        color: #007bff !important;
+        color: #000000 !important;
         border: none !important;
         padding: 0.5rem 1rem !important;
         border-radius: 0.25rem !important;
@@ -186,12 +186,12 @@ st.markdown("""
 
     .stSidebar .stButton > button:hover {
         background-color: rgba(0, 123, 255, 0.1) !important;
-        color: #0056b3 !important;
+        color: #000000 !important;
     }
 
     .stSidebar .stButton > button:active {
         background-color: rgba(0, 123, 255, 0.2) !important;
-        color: #004085 !important;
+        color: #000000 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -392,3 +392,4 @@ elif menu_selection == "Prediksi Sentimen":
             st.warning("Mohon masukkan komentar terlebih dahulu.")
 
 st.sidebar.markdown("---")
+
