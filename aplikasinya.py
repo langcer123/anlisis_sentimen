@@ -277,11 +277,12 @@ if menu_selection == "Dashboard":
         st.subheader("Alur Preprocessing Data")
         st.markdown("""
         Data komentar melalui beberapa tahapan preprocessing untuk memastikan kualitas dan relevansi data sebelum digunakan:
-        1.  **Pembersihan Teks**: Menghapus karakter khusus, tautan (URL), hashtag, dan mention, serta mengubah teks menjadi huruf kecil.
-        2.  **Normalisasi Teks**: Mengubah kata-kata tidak baku (slang) menjadi bentuk formal menggunakan kamus normalisasi.
-        3.  **Tokenisasi**: Memecah teks menjadi unit-unit kata (token).
-        4.  **Stopword Removal**: Menghapus kata-kata umum yang tidak memiliki makna signifikan (stopword) dalam Bahasa Indonesia.
-        5.  **Stemming**: Mengubah kata-kata berimbuhan menjadi kata dasar. (Tahap ini diterapkan untuk TF-IDF dan WordCloud agar konsisten dengan pelatihan model yang diasumsikan menggunakan stemming).
+        1.  **Cleaning**: Menghapus karakter khusus, tautan (URL), hashtag, dan mention.
+        2.  **Case Folding**: Mengubah teks menjadi huruf kecil
+        3.  **Normalisasi**: Mengubah kata-kata tidak baku (slang) menjadi bentuk formal menggunakan kamus normalisasi.
+        4.  **Tokenisasi**: Memecah teks menjadi unit-unit kata (token).
+        5.  **Stopword Removal**: Menghapus kata-kata umum yang tidak memiliki makna signifikan (stopword) dalam Bahasa Indonesia.
+        6.  **Stemming**: Mengubah kata-kata berimbuhan menjadi kata dasar.
         """)
 
         # Top 10 Kata Berdasarkan Total Skor TF-IDF
@@ -382,7 +383,7 @@ if menu_selection == "Dashboard":
 
 elif menu_selection == "Prediksi Sentimen":
     st.header("Prediksi Sentimen")
-    st.write("Masukkan komentar YouTube untuk memprediksi sentimennya (positif, negatif, atau netral).")
+    st.write("Masukkan komentar YouTube untuk memprediksi sentimennya (positif atau negatif).")
     user_input = st.text_area("Komentar Anda", "")
     if st.button("Prediksi"):
         if user_input:
@@ -392,4 +393,5 @@ elif menu_selection == "Prediksi Sentimen":
             st.warning("Mohon masukkan komentar terlebih dahulu.")
 
 st.sidebar.markdown("---")
+
 
