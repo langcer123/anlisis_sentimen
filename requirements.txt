@@ -7,3 +7,4 @@ nltk
 scikit-learn
 wordcloud
 openpyxl
+sastrawi
